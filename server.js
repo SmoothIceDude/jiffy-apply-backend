@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-if (process.env.NODE_ENV !== 'production') {   require('dotenv').config(); }
+if (process.env.NODE_ENV !== 'production') { require('dotenv').config(); }
 
 const app = express();
 
@@ -11,7 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection (NO deprecated options)
+// MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/jiffy-apply')
 .then(() => console.log('MongoDB connected successfully'))
 .catch(err => console.error('MongoDB connection error:', err));
@@ -424,7 +424,6 @@ app.patch('/api/applications/:id', authenticateToken, async (req, res) => {
 });
 
 // Update/Save user resume
-// Update/Save user resume
 app.post('/api/user/resume', authenticateToken, async (req, res) => {
   try {
     const { resumeText } = req.body;
@@ -471,6 +470,8 @@ async function getAISuggestions(resumeText) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": process.env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
@@ -490,6 +491,10 @@ Provide your response as a structured analysis with clear sections.`
     });
 
     const data = await response.json();
+    if (data.error) {
+      console.error('Claude API error:', data.error);
+      return 'Error getting AI suggestions. Your resume has been saved.';
+    }
     return data.content[0].text;
   } catch (error) {
     console.error('AI suggestions error:', error);
@@ -500,10 +505,13 @@ Provide your response as a structured analysis with clear sections.`
 // AI Resume Parsing Function
 async function parseResumeWithAI(resumeText) {
   try {
+    const fetch = (await import('node-fetch')).default;
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": process.env.CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
@@ -531,16 +539,16 @@ Return only the JSON object, no explanation.`
     });
 
     const data = await response.json();
+    if (data.error) {
+      console.error('Claude API error:', data.error);
+      return { skills: [], experience: [], jobTitles: [], education: [], keywords: [] };
+    }
     let jsonText = data.content[0].text.trim();
-    
-    // Remove markdown code blocks if present
     jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
     const parsed = JSON.parse(jsonText);
     return parsed;
   } catch (error) {
     console.error('AI parsing error:', error);
-    // Return default structure if AI fails
     return {
       skills: [],
       experience: [],
@@ -557,7 +565,6 @@ app.get('/api/jobs/search', async (req, res) => {
     const fetch = (await import('node-fetch')).default;
     const { keywords } = req.query;
     
-    // Build search query with keywords if provided
     let searchQuery = keywords || '';
     const url = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=4c31e65f&app_key=2a910f6dea66fef67e15128356e2019d&results_per_page=20&what=${encodeURIComponent(searchQuery)}`;
     
@@ -575,7 +582,7 @@ app.get('/api/jobs/search', async (req, res) => {
   }
 });
 
-// Fetch popular jobs (NO authentication required)
+// Fetch popular jobs
 app.get('/api/jobs/popular', async (req, res) => {
   try {
     const fetch = (await import('node-fetch')).default;
